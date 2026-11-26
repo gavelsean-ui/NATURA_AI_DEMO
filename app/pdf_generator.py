@@ -22,18 +22,16 @@ class PDFReport(FPDF):
 
     def add_watermark(self):
         """Ajoute le filigrane diagonal NATURA AI en vert clair"""
-        self.set_font('Helvetica', 'B', 50)
-        self.set_text_color(220, 240, 220) # Vert très clair
-        # Positionnement au centre de la page (A4 : 210x297)
-        x = 40
+        self.set_font('Helvetica', 'B', 60)
+        self.set_text_color(210, 240, 210) # Vert pastel
+        
+        # Position centrale pour une page A4 (210x297)
+        x = 45
         y = 160
         
-        # Sauvegarde de l'état
-        self._out('q')
-        # Rotation de 45 degrés
-        self._out(f'0.707 0.707 -0.707 0.707 {x} {y} cm')
-        self.cell(100, 10, "NATURA AI", 0, 0, 'C')
-        self._out('Q')
+        # On utilise la fonction rotation native de fpdf2
+        with self.rotation(45, x, y):
+            self.cell(120, 10, "NATURA AI", 0, 0, 'C')
 
 def sanitize_text(text):
     if not isinstance(text, str):
