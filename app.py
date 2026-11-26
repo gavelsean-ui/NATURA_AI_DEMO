@@ -1,4 +1,5 @@
 import streamlit as st
+from datetime import date
 from app.pubmed import search_pubmed
 from app.europe_pmc import search_europe_pmc
 from app.crossref import search_crossref, get_citations_from_doi
@@ -8,15 +9,55 @@ from app.score import calculate_natura_score
 from app.ai_analyzer import analyze_abstract_with_ai
 from app.pdf_generator import generate_pdf
 
-st.set_page_config(page_title="NATURA AI", page_icon="🌿", layout="wide")
-st.title("🌿 NATURA AI")
-st.subheader("Prototype 0.9 — Rapports PDF")
-st.write("Recherche multi-sources, enrichissement et génération de rapports PDF professionnels.")
+st.set_page_config(page_title="NATURA AI - Pilote", page_icon="🌿", layout="wide")
 
+# --- SYSTEME DE SECURITE / PILOTE ---
+# Dictionnaire des codes d'accès partenaires (Format : "CODE": (Nom du partenaire, Date d'expiration AAAA-MM-JJ))
+PARTENAIRES = {
+    "LABO-RD-2024": ("Laboratoire de R&D", date(2025, 5, 25)),
+    "CHERCHEUR-01": ("Université de Pharmacognosie", date(2025, 5, 25)),
+    "TEST-DEMO": ("Accès Démo", date(2024, 12, 31))
+}
+
+def check_auth():
+    if "authenticated" not in st.session_state:
+        st.session_state.authenticated = False
+    
+    if not st.session_state.authenticated:
+        st.sidebar.header("🔒 Accès Partenaire")
+        code = st.sidebar.text_input("Code d'accès", type="password")
+        if st.sidebar.button("Se connecter"):
+            if code in PARTENAIRES:
+                nom, expiration = PARTENAIRES[code]
+                if date.today() > expiration:
+                    st.sidebar.error(f"Accès expiré le {expiration.strftime('%d/%m/%Y')}. Contactez-nous.")
+                else:
+                    st.session_state.authenticated = True
+                    st.session_state.partner_name = nom
+                    st.session_state.expiration_date = expiration
+                    st.rerun()
+            else:
+                st.sidebar.error("Code d'accès invalide.")
+        st.stop() # Bloque l'application tant qu'on n'est pas connecté
+
+check_auth()
+
+# --- APPLICATION (Une fois connecté) ---
+st.title("🌿 NATURA AI")
+st.subheader("Version Pilote 9.0D — Accès Partenaire")
+st.write(f"Bienvenue **{st.session_state.partner_name}**. Votre accès est valable jusqu'au **{st.session_state.expiration_date.strftime('%d/%m/%Y')}**.")
+
+# --- BARRE LATÉRALE ---
 with st.sidebar:
+    st.success(f"Connecté : {st.session_state.partner_name}")
     st.header("🔑 Configuration IA")
-    api_key = st.text_input("Clé API Agnes AI", type="password", help="Obtenez une clé sur agnes-ai.com")
-    st.caption("L'IA analysera les résumés pour enrichir le rapport final.")
+    api_key = st.secrets.get("AGNES_API_KEY", "")
+    if not api_key:
+        api_key = st.text_input("Clé API Agnes AI", type="password", help="Obtenez une clé sur agnes-ai.com")
+    
+    if st.button("Se déconnecter"):
+        st.session_state.authenticated = False
+        st.rerun()
 
 st.info(
     "Le NATURA SCORE évalue la solidité méthodologique et l'impact d'un article basé sur ses métadonnées. "
@@ -93,7 +134,6 @@ results = st.session_state.get("last_results", [])
 if results:
     st.markdown("### Résultats de la dernière recherche")
     
-    # --- BOUTON PDF ---
     if st.button("📄 Générer le rapport PDF professionnel"):
         if not api_key:
             st.warning("⚠️ Sans clé API, le rapport contiendra uniquement les résumés bruts.")
@@ -101,7 +141,6 @@ if results:
         progress_bar = st.progress(0)
         status_text = st.empty()
         
-        # On fait l'analyse IA pour tous les articles avant de générer le PDF
         for i, item in enumerate(results):
             status_text.text(f"Analyse de l'article {i+1}/{len(results)} avec l'IA...")
             if api_key and item.get("abstract"):
@@ -110,18 +149,18 @@ if results:
             progress_bar.progress((i + 1) / len(results))
             
         status_text.text("Génération du document PDF...")
-        
-        # Génération du PDF
         pdf_bytes = generate_pdf(st.session_state.get('last_query', ''), results)
-        
         status_text.text("✅ Rapport PDF prêt !")
+        
+        query_safe = "".join(c for c in st.session_state.get('last_query', 'recherche') if c.isalnum() or c in (' ', '_')).replace(' ', '_')
+        
         st.download_button(
             label="⬇️ Télécharger le dossier PDF",
             data=pdf_bytes,
-            file_name=f"natura_dossier_{st.session_state.get('last_query', 'recherche').replace(' ', '_')}.pdf",
-            mime="application/pdf"
+            file_name=f"natura_pilote_{query_safe}.pdf",
+            mime="application/pdf",
+            use_container_width=True
         )
-    # ------------------------------------------------
 
     for idx, item in enumerate(results):
         sources_str = ", ".join(item.get("sources", ["Inconnue"]))
