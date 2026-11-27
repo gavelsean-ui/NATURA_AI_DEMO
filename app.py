@@ -40,6 +40,9 @@ def check_daily_limit():
     usage_file.write_text(json.dumps(data, indent=2), encoding="utf-8")
     return True, data[today]
 
+from datetime import date, datetime
+from dateutil.relativedelta import relativedelta
+
 def check_auth():
     if "authenticated" not in st.session_state:
         st.session_state.authenticated = False
@@ -47,15 +50,40 @@ def check_auth():
     if not st.session_state.authenticated:
         st.sidebar.header("🔒 Accès Partenaire")
         code = st.sidebar.text_input("Code d'accès", type="password")
+        
         if st.sidebar.button("Se connecter"):
             if code in PARTENAIRES:
-                nom, expiration = PARTENAIRES[code]
-                if date.today() > expiration:
-                    st.sidebar.error(f"Accès expiré le {expiration.strftime('%d/%m/%Y')}. Contactez-nous.")
+                nom, _ = PARTENAIRES[code] # On ignore l'ancienne date fixe
+                
+                # --- NOUVEAU : Gestion de la date de fin dynamique ---
+                # On crée un fichier pour stocker la date de début de chaque partenaire
+                dates_file = Path("data/partenaires_dates.json")
+                dates_file.parent.mkdir(exist_ok=True)
+                
+                if dates_file.exists():
+                    try:
+                        dates_data = json.loads(dates_file.read_text(encoding="utf-8"))
+                    except Exception:
+                        dates_data = {}
+                else:
+                    dates_data = {}
+                
+                # Si le partenaire n'a pas encore de date d'enregistrement, on la crée
+                if code not in dates_data:
+                    dates_data[code] = str(date.today())
+                    dates_file.write_text(json.dumps(dates_data, indent=2), encoding="utf-8")
+                
+                # On calcule la date d'expiration (Date de début + 6 mois)
+                date_debut = datetime.strptime(dates_data[code], "%Y-%m-%d").date()
+                date_expiration = date_debut + relativedelta(months=6)
+                
+                # On vérifie si c'est expiré
+                if date.today() > date_expiration:
+                    st.sidebar.error(f"Accès expiré le {date_expiration.strftime('%d/%m/%Y')}. Contactez-nous.")
                 else:
                     st.session_state.authenticated = True
                     st.session_state.partner_name = nom
-                    st.session_state.expiration_date = expiration
+                    st.session_state.expiration_date = date_expiration
                     st.rerun()
             else:
                 st.sidebar.error("Code d'accès invalide.")
