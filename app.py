@@ -11,14 +11,18 @@ from app.score import calculate_natura_score
 from app.ai_analyzer import analyze_abstract_with_ai
 from app.pdf_generator import generate_pdf
 
+# --- CONFIGURATION DE LA PAGE ---
 st.set_page_config(page_title="NATURA AI - Pilote", page_icon="🌿", layout="wide")
 
+# --- SYSTEME DE SECURITE / PILOTE ---
+# Format : "CODE": (Nom du partenaire, Date d'expiration AAAA-MM-JJ)
 PARTENAIRES = {
-    "LABO-RD-2024": ("Laboratoire de R&D", date(2030, 11, 26)),
-    "CHERCHEUR-01": ("Université de Pharmacognosie", date(2030, 11, 26)),
-    "TEST-DEMO": ("Accès Démo", date(2030, 11, 26))
+    "LABO-RD-2024": ("Laboratoire de R&D", date(2026, 5, 27)),
+    "CHERCHEUR-01": ("Université de Pharmacognosie", date(2026, 5, 27)),
+    "TEST-DEMO": ("Accès Démo", date(2026, 5, 27))
 }
 
+# --- FONCTION POUR LA LIMITE DE 5 RECHERCHES / JOUR ---
 def check_daily_limit():
     usage_file = Path("data/demo_usage.json")
     usage_file.parent.mkdir(exist_ok=True)
@@ -40,9 +44,7 @@ def check_daily_limit():
     usage_file.write_text(json.dumps(data, indent=2), encoding="utf-8")
     return True, data[today]
 
-from datetime import date, datetime
-from dateutil.relativedelta import relativedelta
-
+# --- FONCTION D'AUTHENTIFICATION ---
 def check_auth():
     if "authenticated" not in st.session_state:
         st.session_state.authenticated = False
@@ -50,40 +52,15 @@ def check_auth():
     if not st.session_state.authenticated:
         st.sidebar.header("🔒 Accès Partenaire")
         code = st.sidebar.text_input("Code d'accès", type="password")
-        
         if st.sidebar.button("Se connecter"):
             if code in PARTENAIRES:
-                nom, _ = PARTENAIRES[code] # On ignore l'ancienne date fixe
-                
-                # --- NOUVEAU : Gestion de la date de fin dynamique ---
-                # On crée un fichier pour stocker la date de début de chaque partenaire
-                dates_file = Path("data/partenaires_dates.json")
-                dates_file.parent.mkdir(exist_ok=True)
-                
-                if dates_file.exists():
-                    try:
-                        dates_data = json.loads(dates_file.read_text(encoding="utf-8"))
-                    except Exception:
-                        dates_data = {}
-                else:
-                    dates_data = {}
-                
-                # Si le partenaire n'a pas encore de date d'enregistrement, on la crée
-                if code not in dates_data:
-                    dates_data[code] = str(date.today())
-                    dates_file.write_text(json.dumps(dates_data, indent=2), encoding="utf-8")
-                
-                # On calcule la date d'expiration (Date de début + 6 mois)
-                date_debut = datetime.strptime(dates_data[code], "%Y-%m-%d").date()
-                date_expiration = date_debut + relativedelta(months=6)
-                
-                # On vérifie si c'est expiré
-                if date.today() > date_expiration:
-                    st.sidebar.error(f"Accès expiré le {date_expiration.strftime('%d/%m/%Y')}. Contactez-nous.")
+                nom, expiration = PARTENAIRES[code]
+                if date.today() > expiration:
+                    st.sidebar.error(f"Accès expiré le {expiration.strftime('%d/%m/%Y')}. Contactez-nous.")
                 else:
                     st.session_state.authenticated = True
                     st.session_state.partner_name = nom
-                    st.session_state.expiration_date = date_expiration
+                    st.session_state.expiration_date = expiration
                     st.rerun()
             else:
                 st.sidebar.error("Code d'accès invalide.")
@@ -91,11 +68,12 @@ def check_auth():
 
 check_auth()
 
+# --- APPLICATION (Une fois connecté) ---
 st.title("🌿 NATURA AI")
 st.subheader("Version Pilote 9.0D — Accès Partenaire")
 st.write(f"Bienvenue **{st.session_state.partner_name}**. Votre accès est valable jusqu'au **{st.session_state.expiration_date.strftime('%d/%m/%Y')}**.")
 
-# --- SÉCURISATION DE LA CLÉ API ---
+# --- GESTION DE LA CLÉ API ---
 api_key = ""
 try:
     if "AGNES_API_KEY" in st.secrets:
@@ -103,6 +81,7 @@ try:
 except Exception:
     pass
 
+# --- BARRE LATÉRALE ---
 with st.sidebar:
     st.success(f"Connecté : {st.session_state.partner_name}")
     st.header("🔑 Configuration IA")
@@ -118,6 +97,7 @@ st.info(
     "Il ne valide pas une efficacité médicale et ne remplace pas la lecture critique."
 )
 
+# --- FORMULAIRE DE RECHERCHE ---
 with st.form("search_form"):
     query = st.text_input(
         "Recherche scientifique (en anglais ou nom scientifique recommandé)", 
@@ -132,6 +112,7 @@ with st.form("search_form"):
         
     submitted = st.form_submit_button("Rechercher")
 
+# --- LOGIQUE DE RECHERCHE ---
 if submitted:
     if not query.strip():
         st.warning("Saisis un sujet de recherche.")
@@ -191,6 +172,7 @@ if submitted:
                     
                     st.success(f"{len(final_records)} référence(s) unique(s) trouvée(s). {added} nouvelle(s) ajoutée(s).")
 
+# --- AFFICHAGE DES RÉSULTATS ---
 results = st.session_state.get("last_results", [])
 if results:
     st.markdown("### Résultats de la dernière recherche")
